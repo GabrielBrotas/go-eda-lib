@@ -1,6 +1,9 @@
 package events
 
-import "errors"
+import (
+	"errors"
+	"sync"
+)
 
 var ErrHandlerAlreadyRegistered = errors.New("handler already registered")
 
@@ -29,11 +32,13 @@ func (ed *EventDispatcher) Register(eventName string, handler EventHandlerInterf
 
 // Dispatch the event
 func (ed *EventDispatcher) Dispatch(event EventInterface) error {
-	if _, ok := ed.handlers[event.GetName()]; ok {
-		for _, handler := range ed.handlers[event.GetName()] {
-			// this could be done in a goroutine, figure how to update the tests
-			handler.Handle(event)
+	if handlers, ok := ed.handlers[event.GetName()]; ok {
+		wg := &sync.WaitGroup{}
+		for _, handler := range handlers {
+			wg.Add(1)
+			go handler.Handle(event, wg)
 		}
+		wg.Wait()
 	}
 	return nil
 }
