@@ -7,17 +7,17 @@ import (
 )
 
 type TransactionDB struct {
-	DB *sql.DB
+	tx *sql.Tx
 }
 
-func NewTransactionDB(db *sql.DB) *TransactionDB {
+func NewTransactionDB(tx *sql.Tx) *TransactionDB {
 	return &TransactionDB{
-		DB: db,
+		tx: tx,
 	}
 }
 
 func (t *TransactionDB) Create(transaction *entity.Transaction) error {
-	stmt, err := t.DB.Prepare("INSERT INTO transactions (id, account_id_from, account_id_to, amount, created_at) VALUES (?, ?, ?, ?, ?)")
+	stmt, err := t.tx.Prepare("INSERT INTO transactions (id, account_id_from, account_id_to, amount, created_at) VALUES (?, ?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}

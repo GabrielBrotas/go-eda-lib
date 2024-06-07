@@ -1,10 +1,12 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
 	"github.com/GabrielBrotas/eda-events/internal/entity"
+	"github.com/GabrielBrotas/eda-events/pkg/uow"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/suite"
 )
@@ -12,25 +14,34 @@ import (
 type AccountDBTestSuite struct {
 	suite.Suite
 
-	db        *sql.DB
-	accountDB *AccountDB
-	client    *entity.Client
+	db     *sql.DB
+	uow    *uow.Uow
+	client *entity.Client
 }
 
 func (s *AccountDBTestSuite) SetupSuite() {
 	db, err := sql.Open("sqlite3", ":memory:")
 	s.Nil(err)
 	s.db = db
-	db.Exec("Create table clients (id varchar(255), name varchar(255), email varchar(255), created_at date)")
-	db.Exec("Create table accounts (id varchar(255), client_id varchar(255), balance int, created_at date)")
-	s.accountDB = NewAccountDB(db)
+	_, err = db.Exec("CREATE TABLE clients (id VARCHAR(255), name VARCHAR(255), email VARCHAR(255), created_at DATE)")
+	s.Nil(err)
+	_, err = db.Exec("CREATE TABLE accounts (id VARCHAR(255), client_id VARCHAR(255), balance INT, created_at DATE)")
+	s.Nil(err)
+
+	s.uow = uow.NewUow(db)
+	s.uow.Register("AccountDB", func(tx *sql.Tx) interface{} {
+		return NewAccountDB(tx)
+	})
+
 	s.client, _ = entity.NewClient("John", "j@j.com")
 }
 
 func (s *AccountDBTestSuite) TearDownSuite() {
 	defer s.db.Close()
-	s.db.Exec("DROP TABLE clients")
-	s.db.Exec("DROP TABLE accounts")
+	_, err := s.db.Exec("DROP TABLE clients")
+	s.Nil(err)
+	_, err = s.db.Exec("DROP TABLE accounts")
+	s.Nil(err)
 }
 
 func TestAccountDBTestSuite(t *testing.T) {
@@ -38,44 +49,79 @@ func TestAccountDBTestSuite(t *testing.T) {
 }
 
 func (s *AccountDBTestSuite) TestSave() {
-	account := entity.NewAccount(s.client)
-	err := s.accountDB.Save(account)
+	err := s.uow.Do(context.Background(), func(u *uow.Uow) error {
+		accountRepo, err := u.GetRepository(context.Background(), "AccountDB")
+		if err != nil {
+			return err
+		}
+
+		account := entity.NewAccount(s.client)
+		return accountRepo.(*AccountDB).Save(account)
+	})
 	s.Nil(err)
 }
 
 func (s *AccountDBTestSuite) TestFindByID() {
-	s.db.Exec("Insert into clients (id, name, email, created_at) values (?, ?, ?, ?)",
-		s.client.ID, s.client.Name, s.client.Email, s.client.CreatedAt,
-	)
-	account := entity.NewAccount(s.client)
-	err := s.accountDB.Save(account)
+	_, err := s.db.Exec("INSERT INTO clients (id, name, email, created_at) VALUES (?, ?, ?, ?)",
+		s.client.ID, s.client.Name, s.client.Email, s.client.CreatedAt)
 	s.Nil(err)
-	accountDB, err := s.accountDB.FindByID(account.ID)
+
+	err = s.uow.Do(context.Background(), func(u *uow.Uow) error {
+		accountRepo, err := u.GetRepository(context.Background(), "AccountDB")
+		if err != nil {
+			return err
+		}
+		account := entity.NewAccount(s.client)
+		err = accountRepo.(*AccountDB).Save(account)
+		if err != nil {
+			return err
+		}
+		accountDB, err := accountRepo.(*AccountDB).FindByID(account.ID)
+		if err != nil {
+			return err
+		}
+		s.Equal(account.ID, accountDB.ID)
+		s.Equal(account.Client.ID, accountDB.Client.ID)
+		s.Equal(account.Balance, accountDB.Balance)
+		s.Equal(account.Client.ID, accountDB.Client.ID)
+		s.Equal(account.Client.Name, accountDB.Client.Name)
+		s.Equal(account.Client.Email, accountDB.Client.Email)
+		return nil
+	})
 	s.Nil(err)
-	s.Equal(account.ID, accountDB.ID)
-	s.Equal(account.ClientID, accountDB.ClientID)
-	s.Equal(account.Balance, accountDB.Balance)
-	s.Equal(account.Client.ID, accountDB.Client.ID)
-	s.Equal(account.Client.Name, accountDB.Client.Name)
-	s.Equal(account.Client.Email, accountDB.Client.Email)
 }
 
 func (s *AccountDBTestSuite) TestUpdateBalance() {
-	// 1 - Create a new account
-	s.db.Exec("Insert into clients (id, name, email, created_at) values (?, ?, ?, ?)",
-		s.client.ID, s.client.Name, s.client.Email, s.client.CreatedAt,
-	)
-	account := entity.NewAccount(s.client)
-	err := s.accountDB.Save(account)
+	_, err := s.db.Exec("INSERT INTO clients (id, name, email, created_at) VALUES (?, ?, ?, ?)",
+		s.client.ID, s.client.Name, s.client.Email, s.client.CreatedAt)
 	s.Nil(err)
 
-	// 2 - Update the account balance
-	account.Credit(100)
-	err = s.accountDB.UpdateBalance(account)
-	s.Nil(err)
+	err = s.uow.Do(context.Background(), func(u *uow.Uow) error {
+		accountRepo, err := u.GetRepository(context.Background(), "AccountDB")
+		if err != nil {
+			return err
+		}
+		// 1 - Create a new account
+		account := entity.NewAccount(s.client)
+		err = accountRepo.(*AccountDB).Save(account)
+		if err != nil {
+			return err
+		}
 
-	// 3 - Check if the balance was updated
-	accountDB, err := s.accountDB.FindByID(account.ID)
+		// 2 - Update the account balance
+		account.Credit(100)
+		err = accountRepo.(*AccountDB).UpdateBalance(account)
+		if err != nil {
+			return err
+		}
+
+		// 3 - Check if the balance was updated
+		accountDB, err := accountRepo.(*AccountDB).FindByID(account.ID)
+		if err != nil {
+			return err
+		}
+		s.Equal(float64(100), accountDB.Balance)
+		return nil
+	})
 	s.Nil(err)
-	s.Equal(float64(100), accountDB.Balance)
 }

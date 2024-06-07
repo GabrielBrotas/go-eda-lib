@@ -7,21 +7,20 @@ import (
 )
 
 type AccountDB struct {
-	DB *sql.DB
+	tx *sql.Tx
 }
 
-func NewAccountDB(db *sql.DB) *AccountDB {
+func NewAccountDB(tx *sql.Tx) *AccountDB {
 	return &AccountDB{
-		DB: db,
+		tx: tx,
 	}
 }
-
 func (a *AccountDB) FindByID(id string) (*entity.Account, error) {
 	var account entity.Account
 	var client entity.Client
 	account.Client = &client
 
-	stmt, err := a.DB.Prepare("Select a.id, a.client_id, a.balance, a.created_at, c.id, c.name, c.email, c.created_at FROM accounts a INNER JOIN clients c ON a.client_id = c.id WHERE a.id = ?")
+	stmt, err := a.tx.Prepare("SELECT a.id, a.client_id, a.balance, a.created_at, c.id, c.name, c.email, c.created_at FROM accounts a INNER JOIN clients c ON a.client_id = c.id WHERE a.id = ?")
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +42,7 @@ func (a *AccountDB) FindByID(id string) (*entity.Account, error) {
 }
 
 func (a *AccountDB) Save(account *entity.Account) error {
-	stmt, err := a.DB.Prepare("INSERT INTO accounts (id, client_id, balance, created_at) VALUES (?, ?, ?, ?)")
+	stmt, err := a.tx.Prepare("INSERT INTO accounts (id, client_id, balance, created_at) VALUES (?, ?, ?, ?)")
 	if err != nil {
 		return err
 	}
@@ -56,7 +55,7 @@ func (a *AccountDB) Save(account *entity.Account) error {
 }
 
 func (a *AccountDB) UpdateBalance(account *entity.Account) error {
-	stmt, err := a.DB.Prepare("UPDATE accounts SET balance = ? WHERE id = ?")
+	stmt, err := a.tx.Prepare("UPDATE accounts SET balance = ? WHERE id = ?")
 	if err != nil {
 		return err
 	}

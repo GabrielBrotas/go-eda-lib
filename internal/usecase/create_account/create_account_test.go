@@ -1,6 +1,7 @@
 package create_account
 
 import (
+	"context"
 	"testing"
 
 	"github.com/GabrielBrotas/eda-events/internal/entity"
@@ -10,25 +11,18 @@ import (
 )
 
 func TestCreateAccountUseCase_Execute(t *testing.T) {
-	// mock client gateway Get method
 	client, _ := entity.NewClient("John Doe", "j@j")
-	clientMock := &mocks.ClientGatewayMock{}
-	clientMock.On("Get", client.ID).Return(client, nil)
+	uowMock := &mocks.UowMock{}
+	uowMock.On("Do", mock.Anything, mock.Anything).Return(nil)
 
 	// mock account gateway Save method
-	accountMock := &mocks.AccountGatewayMock{}
-	accountMock.On("Save", mock.Anything).Return(nil)
-
-	uc := NewCreateAccountUseCase(accountMock, clientMock)
+	uc := NewCreateAccountUseCase(uowMock)
 	inputDto := CreateAccountInputDTO{
 		ClientID: client.ID,
 	}
-	output, err := uc.Execute(inputDto)
+	output, err := uc.Execute(context.Background(), inputDto)
 	assert.Nil(t, err)
 	assert.NotNil(t, output.ID)
-	// asssert valid uuid
-	clientMock.AssertExpectations(t)
-	accountMock.AssertExpectations(t)
-	clientMock.AssertNumberOfCalls(t, "Get", 1)
-	accountMock.AssertNumberOfCalls(t, "Save", 1)
+	uowMock.AssertExpectations(t)
+	uowMock.AssertNumberOfCalls(t, "Do", 1)
 }

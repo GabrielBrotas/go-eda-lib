@@ -1,9 +1,11 @@
 package create_client
 
 import (
+	"context"
 	"testing"
 
 	"github.com/GabrielBrotas/eda-events/internal/entity"
+	"github.com/GabrielBrotas/eda-events/internal/usecase/mocks"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -23,11 +25,11 @@ func (m *ClientGatewayMock) Get(id string) (*entity.Client, error) {
 }
 
 func TestCreateClientUseCase_Execute(t *testing.T) {
-	m := &ClientGatewayMock{}
-	m.On("Save", mock.Anything).Return(nil)
-	uc := NewCreateClientUseCase(m)
+	uowMock := &mocks.UowMock{}
+	uowMock.On("Do", mock.Anything, mock.Anything).Return(nil)
+	uc := NewCreateClientUseCase(uowMock)
 
-	output, err := uc.Execute(CreateClientInputDTO{
+	output, err := uc.Execute(context.Background(), CreateClientInputDTO{
 		Name:  "John Doe",
 		Email: "j@j",
 	})
@@ -36,6 +38,6 @@ func TestCreateClientUseCase_Execute(t *testing.T) {
 	assert.NotEmpty(t, output.ID)
 	assert.Equal(t, "John Doe", output.Name)
 	assert.Equal(t, "j@j", output.Email)
-	m.AssertExpectations(t)
-	m.AssertNumberOfCalls(t, "Save", 1)
+	uowMock.AssertExpectations(t)
+	uowMock.AssertNumberOfCalls(t, "Do", 1)
 }

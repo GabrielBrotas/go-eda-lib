@@ -1,10 +1,12 @@
 package create_client
 
 import (
+	"context"
 	"time"
 
 	"github.com/GabrielBrotas/eda-events/internal/entity"
 	"github.com/GabrielBrotas/eda-events/internal/gateway"
+	"github.com/GabrielBrotas/eda-events/pkg/uow"
 )
 
 type CreateClientInputDTO struct {
@@ -21,21 +23,26 @@ type CreateClientOutputDTO struct {
 }
 
 type CreateClientUseCase struct {
-	ClientGateway gateway.ClientGateway
+	Uow uow.UowInterface
 }
 
-func NewCreateClientUseCase(clientGateway gateway.ClientGateway) *CreateClientUseCase {
+func NewCreateClientUseCase(uow uow.UowInterface) *CreateClientUseCase {
 	return &CreateClientUseCase{
-		ClientGateway: clientGateway,
+		Uow: uow,
 	}
 }
 
-func (uc *CreateClientUseCase) Execute(input CreateClientInputDTO) (*CreateClientOutputDTO, error) {
+func (uc *CreateClientUseCase) Execute(ctx context.Context, input CreateClientInputDTO) (*CreateClientOutputDTO, error) {
 	client, err := entity.NewClient(input.Name, input.Email)
 	if err != nil {
 		return nil, err
 	}
-	err = uc.ClientGateway.Save(client)
+
+	err = uc.Uow.Do(ctx, func(_ *uow.Uow) error {
+		clientRepository := uc.getClientRepository(ctx)
+		return clientRepository.Save(client)
+	})
+
 	if err != nil {
 		return nil, err
 	}
@@ -48,4 +55,12 @@ func (uc *CreateClientUseCase) Execute(input CreateClientInputDTO) (*CreateClien
 		UpdatedAt: client.UpdatedAt,
 	}
 	return output, nil
+}
+
+func (uc *CreateClientUseCase) getClientRepository(ctx context.Context) gateway.ClientGateway {
+	repo, err := uc.Uow.GetRepository(ctx, "ClientDB")
+	if err != nil {
+		panic(err)
+	}
+	return repo.(gateway.ClientGateway)
 }
