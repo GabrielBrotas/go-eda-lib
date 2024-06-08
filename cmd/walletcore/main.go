@@ -6,13 +6,16 @@ import (
 
 	"github.com/GabrielBrotas/eda-events/internal/database"
 	"github.com/GabrielBrotas/eda-events/internal/event"
+	"github.com/GabrielBrotas/eda-events/internal/event/handler"
 	createaccount "github.com/GabrielBrotas/eda-events/internal/usecase/create_account"
 	"github.com/GabrielBrotas/eda-events/internal/usecase/create_client"
 	"github.com/GabrielBrotas/eda-events/internal/usecase/create_transaction"
 	"github.com/GabrielBrotas/eda-events/internal/usecase/web"
 	"github.com/GabrielBrotas/eda-events/internal/usecase/web/webserver"
 	"github.com/GabrielBrotas/eda-events/pkg/events"
+	"github.com/GabrielBrotas/eda-events/pkg/kafka"
 	"github.com/GabrielBrotas/eda-events/pkg/uow"
+	ckafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -23,7 +26,22 @@ func main() {
 	}
 	defer db.Close()
 
+	// Kafka setup
+	configMap := ckafka.ConfigMap{
+		"bootstrap.servers": "kafka:29092",
+		"group.id":          "wallet-group",
+	}
+
+	kafkaProducer, err := kafka.NewProducer(&configMap)
+
+	if err != nil {
+		panic(err)
+	}
+
 	eventDispatcher := events.NewEventDispatcher()
+	eventDispatcher.Register("TransactionCreated", handler.NewTransactionCreatedKafkaHandler(kafkaProducer))
+	eventDispatcher.Register("BalanceUpdated", handler.NewBalanceUpdatedKafkaHandler(kafkaProducer))
+
 	transactionCreatedEvent := event.NewTransactionCreated()
 	balanceUpdatedEvent := event.NewBalanceUpdated()
 

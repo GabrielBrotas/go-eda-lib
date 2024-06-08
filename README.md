@@ -5,12 +5,18 @@
 1. initialize docker containers
 
 ```bash
-docker compose up -d
-``` 
+docker compose up -d --build
+```
 
-2. run the endpoints in the `api/client.http` file
+2. create the kakfa topic from the confluence UI
 
-3. query the database from the sql container
+2.1 open the url `http://localhost:9021`
+
+2.2 click on the `Topics` tab
+
+3. run the endpoints in the `api/client.http` file
+
+4. query the database from the sql container
 
 ```sh
 # 1. get the container id
